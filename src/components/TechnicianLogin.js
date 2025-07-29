@@ -85,7 +85,7 @@ const TechnicianLogin = () => {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className={inputClasses}
-              placeholder="admin o tecnico1"
+              placeholder="credenciales"
               required
             />
           </div>
@@ -102,7 +102,7 @@ const TechnicianLogin = () => {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className={inputClasses}
-              placeholder="admin123 o cafe123"
+              placeholder="contraseña"
               required
             />
           </div>
