@@ -1,40 +1,58 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Settings, Users, BarChart2, Coffee, ListTodo, Eye, Edit, Trash2, CheckCircle, XCircle, Clock, Tag, Building, User, Phone, Info, Calendar, MessageSquare, LogOut, Wrench, AlertTriangle } from 'lucide-react';
+import { Settings, Users, BarChart2, Coffee, ListTodo, Eye, Edit, Trash2, CheckCircle, XCircle, Clock, Tag, Building, User, Phone, Info, Calendar, MessageSquare, LogOut, Wrench, AlertTriangle, PlusCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { db } from '../firebaseConfig'; // Importa la instancia de Firestore
-import { collection, query, getDocs, updateDoc, doc, onSnapshot } from 'firebase/firestore'; // Importa funciones de Firestore
+import { db, auth } from '../firebaseConfig'; // Importa auth
+import { collection, query, getDocs, updateDoc, doc, onSnapshot, addDoc, deleteDoc } from 'firebase/firestore';
+import { createUserWithEmailAndPassword } from 'firebase/auth'; // Importa la función para crear usuario
 
 const AdminPanel = () => {
-  const [activeTab, setActiveTab] = useState('overview'); // 'overview', 'users', 'reports'
+  const [activeTab, setActiveTab] = useState('overview');
   const navigate = useNavigate();
 
-  // Datos de ejemplo para usuarios (simulados, en un sistema real vendrían de Firebase Auth o Firestore)
-  const [users, setUsers] = useState([
-    { id: 'u1', username: 'admin', role: 'Administrador', email: 'admin@example.com' },
-    { id: 'u2', username: 'tecnico1', role: 'Técnico', email: 'tecnico1@example.com' },
-    { id: 'u3', username: 'tecnico2', role: 'Técnico', email: 'tecnico2@example.com' },
-  ]);
-
+  const [users, setUsers] = useState([]); // Ahora los usuarios se cargarán de Firestore
   const [reports, setReports] = useState([]);
 
+  const [showAddUserForm, setShowAddUserForm] = useState(false);
+  const [newUserData, setNewUserData] = useState({
+    username: '',
+    email: '',
+    password: '',
+    role: 'Técnico' // Rol por defecto
+  });
+  const [addUserError, setAddUserError] = useState('');
+  const [addUserSuccess, setAddUserSuccess] = useState('');
+
   useEffect(() => {
-    // Escucha cambios en tiempo real en la colección 'reports'
-    const q = query(collection(db, "reports"));
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+    // Listener para reportes
+    const unsubscribeReports = onSnapshot(collection(db, "reports"), (querySnapshot) => {
       const fetchedReports = [];
       querySnapshot.forEach((doc) => {
-        fetchedReports.push({ ...doc.data(), docId: doc.id }); // Guarda el doc.id para futuras actualizaciones
+        fetchedReports.push({ ...doc.data(), docId: doc.id });
       });
       setReports(fetchedReports);
     }, (error) => {
       console.error("Error al obtener reportes en tiempo real: ", error);
-      alert("Error al cargar los reportes. ¿Revisaste tu conexión a Firebase?");
     });
 
-    // Limpia el listener cuando el componente se desmonta
-    return () => unsubscribe();
-  }, []); // Se ejecuta una vez al montar
+    // Listener para usuarios (simulados, en un sistema real se usaría Firebase Auth y/o una colección de usuarios en Firestore)
+    // Por ahora, mantenemos la simulación para roles y datos adicionales
+    const unsubscribeUsers = onSnapshot(collection(db, "users"), (querySnapshot) => {
+      const fetchedUsers = [];
+      querySnapshot.forEach((doc) => {
+        fetchedUsers.push({ ...doc.data(), docId: doc.id });
+      });
+      setUsers(fetchedUsers);
+    }, (error) => {
+      console.error("Error al obtener usuarios en tiempo real: ", error);
+    });
+
+
+    return () => {
+      unsubscribeReports();
+      unsubscribeUsers();
+    };
+  }, []);
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -85,6 +103,49 @@ const AdminPanel = () => {
   const handleLogout = () => {
     if (window.confirm('¿Estás seguro de que quieres cerrar sesión? ¡La "chamba" no se arregla sola!')) {
       navigate('/');
+    }
+  };
+
+  const handleNewUserChange = (e) => {
+    const { name, value } = e.target;
+    setNewUserData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleCreateUser = async (e) => {
+    e.preventDefault();
+    setAddUserError('');
+    setAddUserSuccess('');
+
+    try {
+      // 1. Crear usuario en Firebase Authentication
+      const userCredential = await createUserWithEmailAndPassword(auth, newUserData.email, newUserData.password);
+      const user = userCredential.user;
+
+      // 2. Guardar información adicional del usuario en Firestore
+      await addDoc(collection(db, "users"), {
+        uid: user.uid, // UID de Firebase Auth
+        username: newUserData.username,
+        email: newUserData.email,
+        role: newUserData.role,
+        createdAt: new Date()
+      });
+
+      setAddUserSuccess('Usuario creado con éxito. ¡Otro héroe para el café!');
+      setNewUserData({ username: '', email: '', password: '', role: 'Técnico' });
+      setShowAddUserForm(false); // Cierra el formulario después de crear
+    } catch (error) {
+      console.error("Error al crear usuario: ", error);
+      let errorMessage = "Error al crear usuario. ";
+      if (error.code === 'auth/email-already-in-use') {
+        errorMessage += "El correo electrónico ya está en uso.";
+      } else if (error.code === 'auth/invalid-email') {
+        errorMessage += "El formato del correo electrónico es inválido.";
+      } else if (error.code === 'auth/weak-password') {
+        errorMessage += "La contraseña debe tener al menos 6 caracteres.";
+      } else {
+        errorMessage += error.message;
+      }
+      setAddUserError(errorMessage);
     }
   };
 
@@ -213,22 +274,107 @@ const AdminPanel = () => {
             transition={{ duration: 0.4 }}
           >
             <h3 className="text-2xl font-bold text-gray-800 mb-4">Gestión de Usuarios</h3>
+            <motion.button
+              onClick={() => setShowAddUserForm(!showAddUserForm)}
+              className="mb-4 px-6 py-3 bg-blue-600 text-white font-bold rounded-lg shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 flex items-center gap-2"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+            >
+              <PlusCircle className="w-5 h-5" />
+              {showAddUserForm ? 'Cerrar Formulario' : 'Crear Nuevo Usuario'}
+            </motion.button>
+
+            <AnimatePresence>
+              {showAddUserForm && (
+                <motion.form
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.3 }}
+                  onSubmit={handleCreateUser}
+                  className="mb-6 p-6 bg-gray-50 border border-gray-200 rounded-lg space-y-4"
+                >
+                  <h4 className="text-lg font-bold text-gray-800">Datos del Nuevo Usuario</h4>
+                  {addUserError && <p className="text-red-600 text-sm">{addUserError}</p>}
+                  {addUserSuccess && <p className="text-green-600 text-sm">{addUserSuccess}</p>}
+                  <div>
+                    <label htmlFor="newUsername" className="block text-sm font-medium text-gray-700">Nombre de Usuario:</label>
+                    <input
+                      type="text"
+                      id="newUsername"
+                      name="username"
+                      value={newUserData.username}
+                      onChange={handleNewUserChange}
+                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="newEmail" className="block text-sm font-medium text-gray-700">Email:</label>
+                    <input
+                      type="email"
+                      id="newEmail"
+                      name="email"
+                      value={newUserData.email}
+                      onChange={handleNewUserChange}
+                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="newPassword" className="block text-sm font-medium text-gray-700">Contraseña:</label>
+                    <input
+                      type="password"
+                      id="newPassword"
+                      name="password"
+                      value={newUserData.password}
+                      onChange={handleNewUserChange}
+                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="newRole" className="block text-sm font-medium text-gray-700">Rol:</label>
+                    <select
+                      id="newRole"
+                      name="role"
+                      value={newUserData.role}
+                      onChange={handleNewUserChange}
+                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                    >
+                      <option value="Técnico">Técnico</option>
+                      <option value="Administrador">Administrador</option>
+                    </select>
+                  </div>
+                  <motion.button
+                    type="submit"
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg shadow-md hover:bg-green-700 transition-colors duration-200 flex items-center gap-2"
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    <PlusCircle className="w-4 h-4" />
+                    Crear Usuario
+                  </motion.button>
+                </motion.form>
+              )}
+            </AnimatePresence>
+
             <div className="overflow-x-auto">
               <table className="min-w-full bg-white border border-gray-200 rounded-lg shadow-sm">
                 <thead>
                   <tr className="bg-gray-100 text-gray-600 uppercase text-sm leading-normal">
                     <th className="py-3 px-6 text-left">Usuario</th>
-                    <th className="py-3 px-6 text-left">Rol</th>
                     <th className="py-3 px-6 text-left">Email</th>
+                    <th className="py-3 px-6 text-left">Rol</th>
                     <th className="py-3 px-6 text-center">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="text-gray-700 text-sm font-light">
                   {users.map(user => (
-                    <tr key={user.id} className="border-b border-gray-200 hover:bg-gray-50">
+                    <tr key={user.docId} className="border-b border-gray-200 hover:bg-gray-50">
                       <td className="py-3 px-6 text-left whitespace-nowrap">{user.username}</td>
-                      <td className="py-3 px-6 text-left">{user.role}</td>
                       <td className="py-3 px-6 text-left">{user.email}</td>
+                      <td className="py-3 px-6 text-left">{user.role}</td>
                       <td className="py-3 px-6 text-center">
                         <div className="flex item-center justify-center">
                           <motion.button
@@ -341,7 +487,7 @@ const AdminPanel = () => {
                       >
                         <option value="">Asignar Técnico</option>
                         {users.filter(u => u.role === 'Técnico').map(tech => (
-                          <option key={tech.id} value={tech.username}>{tech.username}</option>
+                          <option key={tech.docId} value={tech.username}>{tech.username}</option>
                         ))}
                       </select>
                     </div>
