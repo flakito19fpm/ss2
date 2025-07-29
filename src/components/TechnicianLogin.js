@@ -15,8 +15,8 @@ const TechnicianLogin = () => {
 
     // Usuarios y contraseñas predefinidos
     const validUsers = {
-      'admin': 'admin123',
-      'tecnico1': 'cafe123'
+      'admin': 'admin1976+',
+      'tecnico1': 'cafe197'
     };
 
     if (validUsers[username] && validUsers[username] === password) {
