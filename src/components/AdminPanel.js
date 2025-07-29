@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Settings, Users, BarChart2, Coffee, ListTodo, Eye, Edit, Trash2, CheckCircle, XCircle, Clock, Tag, Building, User, Phone, Info, Calendar, MessageSquare, LogOut, Wrench, AlertTriangle, PlusCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { db, auth } from '../firebaseConfig'; // Importa auth
+import { db, auth } from '../firebaseConfig'; // Importa auth para la gestión de usuarios
 import { collection, query, getDocs, updateDoc, doc, onSnapshot, addDoc, deleteDoc } from 'firebase/firestore';
-import { createUserWithEmailAndPassword } from 'firebase/auth'; // Importa la función para crear usuario
+import { createUserWithEmailAndPassword, deleteUser } from 'firebase/auth'; // Importa funciones de autenticación
 
 const AdminPanel = () => {
   const [activeTab, setActiveTab] = useState('overview');
@@ -15,29 +15,18 @@ const AdminPanel = () => {
 
   const [showAddUserForm, setShowAddUserForm] = useState(false);
   const [newUserData, setNewUserData] = useState({
-    username: '',
     email: '',
     password: '',
+    username: '',
     role: 'Técnico' // Rol por defecto
   });
-  const [addUserError, setAddUserError] = useState('');
-  const [addUserSuccess, setAddUserSuccess] = useState('');
+  const [userFormError, setUserFormError] = useState('');
+  const [userFormSuccess, setUserFormSuccess] = useState('');
 
+  // Cargar usuarios de Firestore
   useEffect(() => {
-    // Listener para reportes
-    const unsubscribeReports = onSnapshot(collection(db, "reports"), (querySnapshot) => {
-      const fetchedReports = [];
-      querySnapshot.forEach((doc) => {
-        fetchedReports.push({ ...doc.data(), docId: doc.id });
-      });
-      setReports(fetchedReports);
-    }, (error) => {
-      console.error("Error al obtener reportes en tiempo real: ", error);
-    });
-
-    // Listener para usuarios (simulados, en un sistema real se usaría Firebase Auth y/o una colección de usuarios en Firestore)
-    // Por ahora, mantenemos la simulación para roles y datos adicionales
-    const unsubscribeUsers = onSnapshot(collection(db, "users"), (querySnapshot) => {
+    const q = query(collection(db, "users"));
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const fetchedUsers = [];
       querySnapshot.forEach((doc) => {
         fetchedUsers.push({ ...doc.data(), docId: doc.id });
@@ -45,13 +34,25 @@ const AdminPanel = () => {
       setUsers(fetchedUsers);
     }, (error) => {
       console.error("Error al obtener usuarios en tiempo real: ", error);
+      // Manejo de errores
     });
+    return () => unsubscribe();
+  }, []);
 
-
-    return () => {
-      unsubscribeReports();
-      unsubscribeUsers();
-    };
+  // Cargar reportes de Firestore
+  useEffect(() => {
+    const q = query(collection(db, "reports"));
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const fetchedReports = [];
+      querySnapshot.forEach((doc) => {
+        fetchedReports.push({ ...doc.data(), docId: doc.id });
+      });
+      setReports(fetchedReports);
+    }, (error) => {
+      console.error("Error al obtener reportes en tiempo real: ", error);
+      // Manejo de errores
+    });
+    return () => unsubscribe();
   }, []);
 
   const getStatusColor = (status) => {
@@ -111,10 +112,10 @@ const AdminPanel = () => {
     setNewUserData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleCreateUser = async (e) => {
+  const handleAddUser = async (e) => {
     e.preventDefault();
-    setAddUserError('');
-    setAddUserSuccess('');
+    setUserFormError('');
+    setUserFormSuccess('');
 
     try {
       // 1. Crear usuario en Firebase Authentication
@@ -130,24 +131,51 @@ const AdminPanel = () => {
         createdAt: new Date()
       });
 
-      setAddUserSuccess('Usuario creado con éxito. ¡Otro héroe para el café!');
-      setNewUserData({ username: '', email: '', password: '', role: 'Técnico' });
-      setShowAddUserForm(false); // Cierra el formulario después de crear
+      setUserFormSuccess('Usuario creado con éxito. ¡Otro héroe para el café!');
+      setNewUserData({ email: '', password: '', username: '', role: 'Técnico' }); // Limpiar formulario
+      setShowAddUserForm(false); // Cerrar formulario
     } catch (error) {
       console.error("Error al crear usuario: ", error);
       let errorMessage = "Error al crear usuario. ";
       if (error.code === 'auth/email-already-in-use') {
-        errorMessage += "El correo electrónico ya está en uso.";
+        errorMessage += 'El correo electrónico ya está en uso.';
       } else if (error.code === 'auth/invalid-email') {
-        errorMessage += "El formato del correo electrónico es inválido.";
+        errorMessage += 'El formato del correo electrónico es inválido.';
       } else if (error.code === 'auth/weak-password') {
-        errorMessage += "La contraseña debe tener al menos 6 caracteres.";
+        errorMessage += 'La contraseña es demasiado débil (mínimo 6 caracteres).';
       } else {
         errorMessage += error.message;
       }
-      setAddUserError(errorMessage);
+      setUserFormError(errorMessage);
     }
   };
+
+  const handleDeleteUser = async (userDocId, userUid, username) => {
+    if (window.confirm(`¿Estás seguro de que quieres eliminar al usuario ${username}? ¡No hay vuelta atrás!`)) {
+      try {
+        // 1. Eliminar el documento del usuario de Firestore
+        await deleteDoc(doc(db, "users", userDocId));
+        
+        // 2. Eliminar el usuario de Firebase Authentication
+        // Nota: Esto solo funciona si el usuario actual es un administrador con los permisos adecuados
+        // y si el usuario a eliminar no es el mismo que está logueado.
+        // Para una gestión de usuarios robusta, se recomienda usar Cloud Functions para eliminar usuarios de Auth.
+        // Por simplicidad en este ejemplo, se intenta eliminar directamente.
+        const userToDelete = auth.currentUser; // Esto no es correcto, necesitas el objeto User del usuario a eliminar
+        // Para eliminar un usuario de Auth, necesitas el objeto User de ese usuario.
+        // Esto es complejo de hacer directamente desde el cliente por razones de seguridad.
+        // Una solución común es usar Cloud Functions para que un admin pueda llamar a una función que elimine el usuario de Auth.
+        // Por ahora, solo eliminaremos el registro de Firestore.
+        // deleteUser(userToDelete); // Esto no funcionará como se espera aquí.
+
+        setUserFormSuccess(`Usuario ${username} eliminado de Firestore. (La eliminación de Auth requiere más configuración)`);
+      } catch (error) {
+        console.error("Error al eliminar usuario: ", error);
+        setUserFormError(`Error al eliminar usuario: ${error.message}`);
+      }
+    }
+  };
+
 
   return (
     <motion.div
@@ -273,16 +301,18 @@ const AdminPanel = () => {
             exit={{ opacity: 0, y: -20 }}
             transition={{ duration: 0.4 }}
           >
-            <h3 className="text-2xl font-bold text-gray-800 mb-4">Gestión de Usuarios</h3>
-            <motion.button
-              onClick={() => setShowAddUserForm(!showAddUserForm)}
-              className="mb-4 px-6 py-3 bg-blue-600 text-white font-bold rounded-lg shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 flex items-center gap-2"
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-            >
-              <PlusCircle className="w-5 h-5" />
-              {showAddUserForm ? 'Cerrar Formulario' : 'Crear Nuevo Usuario'}
-            </motion.button>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-2xl font-bold text-gray-800">Gestión de Usuarios</h3>
+              <motion.button
+                onClick={() => setShowAddUserForm(!showAddUserForm)}
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg shadow-md hover:bg-blue-600 transition-colors duration-200 flex items-center gap-2"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                <PlusCircle className="w-5 h-5" />
+                {showAddUserForm ? 'Cancelar' : 'Añadir Usuario'}
+              </motion.button>
+            </div>
 
             <AnimatePresence>
               {showAddUserForm && (
@@ -291,68 +321,38 @@ const AdminPanel = () => {
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
                   transition={{ duration: 0.3 }}
-                  onSubmit={handleCreateUser}
-                  className="mb-6 p-6 bg-gray-50 border border-gray-200 rounded-lg space-y-4"
+                  onSubmit={handleAddUser}
+                  className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6 space-y-4 overflow-hidden"
                 >
-                  <h4 className="text-lg font-bold text-gray-800">Datos del Nuevo Usuario</h4>
-                  {addUserError && <p className="text-red-600 text-sm">{addUserError}</p>}
-                  {addUserSuccess && <p className="text-green-600 text-sm">{addUserSuccess}</p>}
+                  <h4 className="text-lg font-bold text-blue-800">Nuevo Usuario</h4>
+                  {userFormError && <p className="text-red-600 text-sm">{userFormError}</p>}
+                  {userFormSuccess && <p className="text-green-600 text-sm">{userFormSuccess}</p>}
                   <div>
-                    <label htmlFor="newUsername" className="block text-sm font-medium text-gray-700">Nombre de Usuario:</label>
-                    <input
-                      type="text"
-                      id="newUsername"
-                      name="username"
-                      value={newUserData.username}
-                      onChange={handleNewUserChange}
-                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                      required
-                    />
+                    <label htmlFor="email" className="block text-sm font-medium text-gray-700">Email:</label>
+                    <input type="email" name="email" value={newUserData.email} onChange={handleNewUserChange} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" required />
                   </div>
                   <div>
-                    <label htmlFor="newEmail" className="block text-sm font-medium text-gray-700">Email:</label>
-                    <input
-                      type="email"
-                      id="newEmail"
-                      name="email"
-                      value={newUserData.email}
-                      onChange={handleNewUserChange}
-                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                      required
-                    />
+                    <label htmlFor="password" className="block text-sm font-medium text-gray-700">Contraseña:</label>
+                    <input type="password" name="password" value={newUserData.password} onChange={handleNewUserChange} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" required />
                   </div>
                   <div>
-                    <label htmlFor="newPassword" className="block text-sm font-medium text-gray-700">Contraseña:</label>
-                    <input
-                      type="password"
-                      id="newPassword"
-                      name="password"
-                      value={newUserData.password}
-                      onChange={handleNewUserChange}
-                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                      required
-                    />
+                    <label htmlFor="username" className="block text-sm font-medium text-gray-700">Nombre de Usuario:</label>
+                    <input type="text" name="username" value={newUserData.username} onChange={handleNewUserChange} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" required />
                   </div>
                   <div>
-                    <label htmlFor="newRole" className="block text-sm font-medium text-gray-700">Rol:</label>
-                    <select
-                      id="newRole"
-                      name="role"
-                      value={newUserData.role}
-                      onChange={handleNewUserChange}
-                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                    >
-                      <option value="Técnico">Técnico</option>
+                    <label htmlFor="role" className="block text-sm font-medium text-gray-700">Rol:</label>
+                    <select name="role" value={newUserData.role} onChange={handleNewUserChange} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
                       <option value="Administrador">Administrador</option>
+                      <option value="Técnico">Técnico</option>
                     </select>
                   </div>
                   <motion.button
                     type="submit"
-                    className="px-4 py-2 bg-green-600 text-white rounded-lg shadow-md hover:bg-green-700 transition-colors duration-200 flex items-center gap-2"
+                    className="px-4 py-2 bg-green-500 text-white rounded-lg shadow-md hover:bg-green-600 transition-colors duration-200 flex items-center gap-2"
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                   >
-                    <PlusCircle className="w-4 h-4" />
+                    <PlusCircle className="w-5 h-5" />
                     Crear Usuario
                   </motion.button>
                 </motion.form>
@@ -377,15 +377,16 @@ const AdminPanel = () => {
                       <td className="py-3 px-6 text-left">{user.role}</td>
                       <td className="py-3 px-6 text-center">
                         <div className="flex item-center justify-center">
-                          <motion.button
+                          {/* <motion.button
                             className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 hover:bg-blue-200 flex items-center justify-center mr-2"
                             whileHover={{ scale: 1.1 }}
                             whileTap={{ scale: 0.9 }}
                             title="Editar"
                           >
                             <Edit className="w-4 h-4" />
-                          </motion.button>
+                          </motion.button> */}
                           <motion.button
+                            onClick={() => handleDeleteUser(user.docId, user.uid, user.username)}
                             className="w-8 h-8 rounded-full bg-red-100 text-red-600 hover:bg-red-200 flex items-center justify-center"
                             whileHover={{ scale: 1.1 }}
                             whileTap={{ scale: 0.9 }}

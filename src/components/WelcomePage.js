@@ -41,7 +41,7 @@ const WelcomePage = () => {
         >
           Bienvenido al Centro de Soporte Técnico
           <span className="block text-transparent bg-clip-text bg-gradient-to-r from-amber-500 to-orange-600">
-            para Equipos de Café
+            de Café Kaawa
           </span>
         </motion.h1>
 

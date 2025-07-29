@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Building, User, Phone, Coffee, Grinder, MessageSquare, Wrench, Info, CheckCircle } from 'lucide-react';
+import { Send, Building, User, Phone, Coffee, Grinder, MessageSquare, Wrench, Info, CheckCircle, MapPin } from 'lucide-react';
 import { db } from '../firebaseConfig'; // Importa la instancia de Firestore
 import { collection, addDoc } from 'firebase/firestore'; // Importa funciones de Firestore
 
@@ -9,9 +9,11 @@ const ReportForm = () => {
     companyName: '',
     reporterName: '',
     phoneNumber: '',
-    equipmentType: '', // Ahora será 'Cafetera' o 'Molino'
-    equipmentModel: '', // Nuevo campo para el modelo
-    issueDescription: ''
+    equipmentType: '',
+    equipmentModel: '', // Ahora opcional
+    issueDescription: '',
+    zone: '', // Nuevo campo para la zona
+    otherZone: '' // Campo para "Otra" zona
   });
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [folioNumber, setFolioNumber] = useState('');
@@ -25,8 +27,6 @@ const ReportForm = () => {
   };
 
   const generateFolio = () => {
-    // Esto es un folio "único" para que se sientan especiales.
-    // En un mundo real, esto vendría de tu base de datos.
     return 'CAF-' + Math.random().toString(36).substr(2, 9).toUpperCase();
   };
 
@@ -36,20 +36,24 @@ const ReportForm = () => {
     const newFolio = generateFolio();
     setFolioNumber(newFolio);
 
+    // Prepara los datos a enviar, excluyendo otherZone si no es "Otro"
+    const dataToSubmit = { ...formData };
+    if (dataToSubmit.zone !== 'Otro') {
+      delete dataToSubmit.otherZone;
+    }
+
     try {
-      // Añade el reporte a la colección 'reports' en Firestore
       await addDoc(collection(db, "reports"), {
-        ...formData,
-        id: newFolio, // Usamos el folio generado como ID del reporte
-        status: 'Pendiente', // Estado inicial del reporte
-        date: new Date().toISOString().split('T')[0], // Fecha actual
-        assignedTo: null, // Sin asignar al inicio
-        workLog: [] // Log de trabajo vacío
+        ...dataToSubmit,
+        id: newFolio,
+        status: 'Pendiente',
+        date: new Date().toISOString().split('T')[0],
+        assignedTo: null,
+        workLog: []
       });
       console.log("Documento escrito con ID: ", newFolio);
       setShowConfirmation(true);
 
-      // Reiniciar el formulario después de un breve retraso para la animación
       setTimeout(() => {
         setFormData({
           companyName: '',
@@ -57,7 +61,9 @@ const ReportForm = () => {
           phoneNumber: '',
           equipmentType: '',
           equipmentModel: '',
-          issueDescription: ''
+          issueDescription: '',
+          zone: '',
+          otherZone: ''
         });
       }, 500); 
 
@@ -155,7 +161,7 @@ const ReportForm = () => {
             >
               <label htmlFor="companyName" className={labelClasses}>
                 <Building className="inline-block w-4 h-4 mr-2 text-blue-500" />
-                Nombre de la Cafetería/Empresa:
+                Nombre de la Cafetería/Restaurante:
               </label>
               <input
                 type="text"
@@ -241,7 +247,7 @@ const ReportForm = () => {
             >
               <label htmlFor="equipmentModel" className={labelClasses}>
                 <Info className="inline-block w-4 h-4 mr-2 text-cyan-500" />
-                Modelo del Equipo:
+                Modelo del Equipo (Opcional):
               </label>
               <input
                 type="text"
@@ -251,14 +257,66 @@ const ReportForm = () => {
                 onChange={handleChange}
                 className={inputClasses}
                 placeholder="Ej: La Marzocco Linea Mini, Baratza Encore"
-                required
               />
             </motion.div>
 
             <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.8, duration: 0.4 }}
+            >
+              <label htmlFor="zone" className={labelClasses}>
+                <MapPin className="inline-block w-4 h-4 mr-2 text-purple-500" />
+                Zona donde se encuentra:
+              </label>
+              <select
+                id="zone"
+                name="zone"
+                value={formData.zone}
+                onChange={handleChange}
+                className={inputClasses}
+                required
+              >
+                <option value="">Selecciona una zona</option>
+                <option value="Cancun">Cancún</option>
+                <option value="Puerto Morelos">Puerto Morelos</option>
+                <option value="Playa del Carmen">Playa del Carmen</option>
+                <option value="Puerto Aventuras">Puerto Aventuras</option>
+                <option value="Tulum">Tulum</option>
+                <option value="Otro">Otro</option>
+              </select>
+            </motion.div>
+
+            <AnimatePresence>
+              {formData.zone === 'Otro' && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <label htmlFor="otherZone" className={labelClasses}>
+                    <MapPin className="inline-block w-4 h-4 mr-2 text-purple-500" />
+                    Especifica la otra zona:
+                  </label>
+                  <input
+                    type="text"
+                    id="otherZone"
+                    name="otherZone"
+                    value={formData.otherZone}
+                    onChange={handleChange}
+                    className={inputClasses}
+                    placeholder="Ej: Cozumel, Chetumal"
+                    required // Hacerlo requerido si se selecciona "Otro"
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.8, duration: 0.4 }}
+              transition={{ delay: 0.9, duration: 0.4 }}
             >
               <label htmlFor="issueDescription" className={labelClasses}>
                 <MessageSquare className="inline-block w-4 h-4 mr-2 text-orange-500" />
@@ -291,7 +349,7 @@ const ReportForm = () => {
               className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 flex items-start gap-3"
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.9, duration: 0.4 }}
+              transition={{ delay: 1.0, duration: 0.4 }}
             >
               <Info className="w-5 h-5 flex-shrink-0 mt-0.5" />
               <p className="text-sm">
