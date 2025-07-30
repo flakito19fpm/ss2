@@ -2,56 +2,48 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { LogIn, User, Lock, Coffee, Zap } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { signInWithEmailAndPassword } from 'firebase/auth'; // Importa la función de login
-import { auth, db } from '../firebaseConfig'; // Importa auth y db
-import { collection, query, where, getDocs } from 'firebase/firestore'; // Importa funciones de Firestore
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { auth } from '../firebaseConfig'; // Solo necesitamos auth aquí
 
 const TechnicianLogin = () => {
-  const [email, setEmail] = useState(''); // Cambiado a email
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const navigate = useNavigate();
+
+  // Usuarios predefinidos con sus credenciales
+  const predefinedUsers = {
+    'admin@kaawa.com': { password: 'Claudio1976+', role: 'Administrador' },
+    'carlos@kaawa.com': { password: 'robusta25', role: 'Técnico' },
+  };
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
 
+    const userEntry = predefinedUsers[email];
+
+    if (!userEntry) {
+      setError('Credenciales incorrectas. ¿Seguro que eres un técnico y no un impostor que quiere café gratis?');
+      return;
+    }
+
     try {
       // Autenticar con Firebase Authentication
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
+      await signInWithEmailAndPassword(auth, email, password);
 
-      // Obtener el rol del usuario desde Firestore
-      const q = query(collection(db, "users"), where("uid", "==", user.uid));
-      const querySnapshot = await getDocs(q);
-
-      if (!querySnapshot.empty) {
-        const userData = querySnapshot.docs[0].data();
-        const userRole = userData.role;
-
-        console.log('Login exitoso para el usuario:', email, 'con rol:', userRole);
-
-        // Redirigir según el rol
-        if (userRole === 'Administrador') {
-          navigate('/panel-admin');
-        } else if (userRole === 'Técnico') {
-          navigate('/panel-tecnico');
-        } else {
-          setError('Rol de usuario no reconocido. ¿Quién eres tú?');
-          // Opcional: cerrar sesión si el rol no es válido
-          // await auth.signOut();
-        }
+      // Si la autenticación es exitosa, redirigir según el rol predefinido
+      if (userEntry.role === 'Administrador') {
+        navigate('/panel-admin');
+      } else if (userEntry.role === 'Técnico') {
+        navigate('/panel-tecnico');
       } else {
-        setError('No se encontró información de rol para este usuario. Contacta al administrador.');
-        // Opcional: cerrar sesión
-        // await auth.signOut();
+        setError('Rol de usuario no reconocido. Contacta al administrador.');
       }
     } catch (error) {
       console.error("Error al iniciar sesión: ", error);
       let errorMessage = "Error al iniciar sesión. ";
-      if (error.code === 'auth/invalid-email') {
-        errorMessage += "El formato del correo electrónico es inválido.";
-      } else if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+      if (error.code === 'auth/invalid-email' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
         errorMessage += "Credenciales incorrectas. ¿Seguro que eres un técnico y no un impostor que quiere café gratis?";
       } else if (error.code === 'auth/too-many-requests') {
         errorMessage += "Demasiados intentos fallidos. Intenta de nuevo más tarde.";
@@ -115,7 +107,7 @@ const TechnicianLogin = () => {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className={inputClasses}
-              placeholder="" // Eliminado el comentario problemático
+              placeholder="admin@kaawa.com o carlos@kaawa.com" // Placeholder con ejemplos
               required
             />
           </div>
@@ -132,7 +124,7 @@ const TechnicianLogin = () => {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className={inputClasses}
-              placeholder="" // Eliminado el comentario problemático
+              placeholder="Claudio1976+ o robusta25" // Placeholder con ejemplos
               required
             />
           </div>
