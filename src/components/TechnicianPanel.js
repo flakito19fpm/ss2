@@ -2,14 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Coffee, Wrench, CheckCircle, XCircle, Clock, Building, User, Phone, Info, Calendar, Tag, MessageSquare, LogOut, AlertTriangle, DollarSign, FileText } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { db } from '../firebaseConfig'; // Importa la instancia de Firestore
-import { collection, query, where, getDocs, updateDoc, doc, addDoc, onSnapshot } from 'firebase/firestore'; // Importa funciones de Firestore
+import { db, auth } from '../firebaseConfig'; // Importa auth para cerrar sesión
+import { collection, query, where, getDocs, updateDoc, doc, addDoc, onSnapshot, getDoc } from 'firebase/firestore'; // Importa getDoc
 
 const TechnicianPanel = () => {
   const navigate = useNavigate();
   const [reports, setReports] = useState([]);
   const [filterStatus, setFilterStatus] = useState('Pendiente');
-  const loggedInTechnician = 'carlos'; // Simulación del usuario logueado
+  // Simulación del usuario logueado (en un sistema real, esto vendría del contexto de autenticación)
+  // Por ahora, lo mantenemos para filtrar los reportes que le corresponden al técnico
+  const loggedInTechnician = 'tecnico1'; 
   const [showWorkLogForm, setShowWorkLogForm] = useState(null);
   const [workLogData, setWorkLogData] = useState({
     description: '',
@@ -33,7 +35,7 @@ const TechnicianPanel = () => {
       setReports(technicianReports);
     }, (error) => {
       console.error("Error al obtener reportes en tiempo real: ", error);
-      alert("Error al cargar los reportes. ¿Revisaste tu conexión a Firebase?");
+      // Aquí podrías mostrar un mensaje al usuario
     });
 
     // Limpia el listener cuando el componente se desmonta
@@ -78,9 +80,15 @@ const TechnicianPanel = () => {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     if (window.confirm('¿Estás seguro de que quieres cerrar sesión? ¡La "chamba" no se arregla sola!')) {
-      navigate('/');
+      try {
+        await auth.signOut(); // Cierra la sesión de Firebase
+        navigate('/');
+      } catch (error) {
+        console.error("Error al cerrar sesión: ", error);
+        alert("No se pudo cerrar la sesión. ¡Intenta de nuevo!");
+      }
     }
   };
 
@@ -94,10 +102,6 @@ const TechnicianPanel = () => {
     try {
       const reportRef = doc(db, "reports", reportDocId);
       // Obtener el documento actual para no sobrescribir el workLog
-      const reportSnap = await getDocs(reportRef); // Esto es incorrecto, debería ser getDoc
-      const currentReport = reportSnap.data(); // Esto es incorrecto
-
-      // Corrección: usar getDoc para obtener un solo documento
       const currentReportDoc = await getDoc(reportRef);
       const currentWorkLog = currentReportDoc.data().workLog || [];
 
@@ -106,7 +110,7 @@ const TechnicianPanel = () => {
       });
       console.log(`Registro de trabajo añadido al reporte ${reportDocId}`);
       setWorkLogData({ description: '', date: '', time: '', cost: '' });
-      setShowWorkLogForm(null);
+      setShowWorkLogForm(null); // Cierra el formulario
     } catch (e) {
       console.error("Error al añadir registro de trabajo: ", e);
       alert("No se pudo guardar el registro de trabajo. ¡Firebase se puso rebelde!");
@@ -171,7 +175,7 @@ const TechnicianPanel = () => {
           {filteredReports.length > 0 ? (
             filteredReports.map((report) => (
               <motion.div
-                key={report.docId} // Usar docId para la key
+                key={report.docId}
                 layout
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
