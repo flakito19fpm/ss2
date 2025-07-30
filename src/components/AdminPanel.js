@@ -2,18 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Settings, Users, BarChart2, Coffee, ListTodo, Eye, Edit, Trash2, CheckCircle, XCircle, Clock, Tag, Building, User, Phone, Info, Calendar, MessageSquare, LogOut, Wrench, AlertTriangle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { db, auth } from '../firebaseConfig';
-import { collection, query, getDocs, updateDoc, doc, onSnapshot, addDoc, deleteDoc } from 'firebase/firestore';
-import { signOut } from 'firebase/auth'; // Importa signOut
+import { db } from '../firebaseConfig'; // Ya no necesitamos 'auth' aquí
+import { collection, query, getDocs, updateDoc, doc, onSnapshot } from 'firebase/firestore';
 
 const AdminPanel = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const navigate = useNavigate();
 
-  // Usuarios predefinidos (simulados, en un sistema real se usaría Firebase Auth y/o una colección de usuarios en Firestore)
+  // Usuarios predefinidos con sus roles
   const predefinedUsers = [
-    { id: 'u1', username: 'admin', email: 'admin@kaawa.com', role: 'Administrador' },
-    { id: 'u2', username: 'carlos', email: 'carlos@kaawa.com', role: 'Técnico' },
+    { username: 'admin', role: 'Administrador' },
+    { username: 'carlos', role: 'Técnico' },
   ];
 
   const [reports, setReports] = useState([]);
@@ -79,15 +78,10 @@ const AdminPanel = () => {
     }
   };
 
-  const handleLogout = async () => {
+  const handleLogout = () => {
     if (window.confirm('¿Estás seguro de que quieres cerrar sesión? ¡La "chamba" no se arregla sola!')) {
-      try {
-        await signOut(auth); // Cierra la sesión de Firebase Auth
-        navigate('/');
-      } catch (error) {
-        console.error("Error al cerrar sesión: ", error);
-        alert("No se pudo cerrar la sesión. ¡Intenta de nuevo!");
-      }
+      // Como no usamos Firebase Auth para el login, simplemente redirigimos
+      navigate('/');
     }
   };
 
@@ -138,7 +132,6 @@ const AdminPanel = () => {
           <Eye className="w-5 h-5" />
           Resumen
         </motion.button>
-        {/* Eliminado el botón de Gestión de Usuarios */}
         <motion.button
           onClick={() => setActiveTab('reports')}
           className={`px-6 py-3 rounded-full font-semibold transition-all duration-300 flex items-center gap-2 ${
@@ -196,8 +189,6 @@ const AdminPanel = () => {
             </motion.div>
           </motion.div>
         )}
-
-        {/* Eliminado el contenido de la pestaña de Gestión de Usuarios */}
 
         {activeTab === 'reports' && (
           <motion.div
@@ -283,7 +274,7 @@ const AdminPanel = () => {
                       >
                         <option value="">Asignar Técnico</option>
                         {predefinedUsers.filter(u => u.role === 'Técnico').map(tech => (
-                          <option key={tech.id} value={tech.username}>{tech.username}</option>
+                          <option key={tech.username} value={tech.username}>{tech.username}</option>
                         ))}
                       </select>
                     </div>
