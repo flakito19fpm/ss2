@@ -2,55 +2,38 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { LogIn, User, Lock, Coffee, Zap } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../firebaseConfig'; // Solo necesitamos auth aquí
 
 const TechnicianLogin = () => {
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState(''); // Cambiado de email a username
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
-  // Usuarios predefinidos con sus credenciales
+  // Usuarios predefinidos con sus credenciales y roles
   const predefinedUsers = {
     'admin': { password: 'Claudio1976+', role: 'Administrador' },
     'carlos': { password: 'robusta25', role: 'Técnico' },
+    'jonathan': { password: 'arabica25', role: 'Técnico' }
   };
 
-  const handleLogin = async (e) => {
+  const handleLogin = (e) => {
     e.preventDefault();
     setError('');
 
-    const userEntry = predefinedUsers[email];
+    const userEntry = predefinedUsers[username];
 
-    if (!userEntry) {
+    if (!userEntry || userEntry.password !== password) {
       setError('Credenciales incorrectas. ¿Seguro que eres un técnico y no un impostor que quiere café gratis?');
       return;
     }
 
-    try {
-      // Autenticar con Firebase Authentication
-      await signInWithEmailAndPassword(auth, email, password);
-
-      // Si la autenticación es exitosa, redirigir según el rol predefinido
-      if (userEntry.role === 'Administrador') {
-        navigate('/panel-admin');
-      } else if (userEntry.role === 'Técnico') {
-        navigate('/panel-tecnico');
-      } else {
-        setError('Rol de usuario no reconocido. Contacta al administrador.');
-      }
-    } catch (error) {
-      console.error("Error al iniciar sesión: ", error);
-      let errorMessage = "Error al iniciar sesión. ";
-      if (error.code === 'auth/invalid-email' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
-        errorMessage += "Credenciales incorrectas. ¿Seguro que eres un técnico y no un impostor que quiere café gratis?";
-      } else if (error.code === 'auth/too-many-requests') {
-        errorMessage += "Demasiados intentos fallidos. Intenta de nuevo más tarde.";
-      } else {
-        errorMessage += error.message;
-      }
-      setError(errorMessage);
+    // Si las credenciales son correctas, redirigir según el rol predefinido
+    if (userEntry.role === 'Administrador') {
+      navigate('/panel-admin');
+    } else if (userEntry.role === 'Técnico') {
+      navigate('/panel-tecnico');
+    } else {
+      setError('Rol de usuario no reconocido. Contacta al administrador.');
     }
   };
 
@@ -96,18 +79,18 @@ const TechnicianLogin = () => {
 
         <form onSubmit={handleLogin} className="space-y-6">
           <div>
-            <label htmlFor="email" className={labelClasses}>
+            <label htmlFor="username" className={labelClasses}>
               <User className="inline-block w-4 h-4 mr-2 text-blue-500" />
-              Email:
+              Usuario:
             </label>
             <input
-              type="email"
-              id="email"
-              name="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              type="text"
+              id="username"
+              name="username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
               className={inputClasses}
-              placeholder="usuario" // Placeholder con ejemplos
+              placeholder="Credencial"
               required
             />
           </div>
@@ -124,7 +107,7 @@ const TechnicianLogin = () => {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className={inputClasses}
-              placeholder="pass" // Placeholder con ejemplos
+              placeholder="Contraseña"
               required
             />
           </div>
