@@ -13,8 +13,8 @@ const TechnicianLogin = () => {
 
   // Usuarios predefinidos con sus credenciales
   const predefinedUsers = {
-    'admin@kaawa.com': { password: 'Claudio1976+', role: 'Administrador' },
-    'carlos@kaawa.com': { password: 'robusta25', role: 'Técnico' },
+    'admin': { password: 'Claudio1976+', role: 'Administrador' },
+    'carlos': { password: 'robusta25', role: 'Técnico' },
   };
 
   const handleLogin = async (e) => {
