@@ -9,7 +9,7 @@ const TechnicianPanel = () => {
   const navigate = useNavigate();
   const [reports, setReports] = useState([]);
   const [filterStatus, setFilterStatus] = useState('Pendiente');
-  const loggedInTechnician = 'tecnico1'; // Simulación del usuario logueado
+  const loggedInTechnician = 'carlos'; // Simulación del usuario logueado
   const [showWorkLogForm, setShowWorkLogForm] = useState(null);
   const [workLogData, setWorkLogData] = useState({
     description: '',
