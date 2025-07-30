@@ -2,16 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Coffee, Wrench, CheckCircle, XCircle, Clock, Building, User, Phone, Info, Calendar, Tag, MessageSquare, LogOut, AlertTriangle, DollarSign, FileText } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { db, auth } from '../firebaseConfig'; // Importa auth para cerrar sesión
-import { collection, query, where, getDocs, updateDoc, doc, addDoc, onSnapshot, getDoc } from 'firebase/firestore'; // Importa getDoc
+import { db } from '../firebaseConfig';
+import { collection, query, where, getDocs, updateDoc, doc, addDoc, onSnapshot, getDoc } from 'firebase/firestore';
+import { showInAppNotification } from '../utils/notificationService'; // Importa la función de notificación
 
 const TechnicianPanel = () => {
   const navigate = useNavigate();
   const [reports, setReports] = useState([]);
   const [filterStatus, setFilterStatus] = useState('Pendiente');
-  // Simulación del usuario logueado (en un sistema real, esto vendría del contexto de autenticación)
-  // Por ahora, lo mantenemos para filtrar los reportes que le corresponden al técnico
-  const loggedInTechnician = 'tecnico1'; 
+  const [loggedInUsername, setLoggedInUsername] = useState(''); // Estado para el nombre de usuario logueado
   const [showWorkLogForm, setShowWorkLogForm] = useState(null);
   const [workLogData, setWorkLogData] = useState({
     description: '',
@@ -19,8 +18,23 @@ const TechnicianPanel = () => {
     time: '',
     cost: ''
   });
+  const [delayJustification, setDelayJustification] = useState(''); // Nuevo estado para la justificación
+
+  // Obtener el nombre de usuario del técnico logueado desde localStorage
+  useEffect(() => {
+    const storedUsername = localStorage.getItem('loggedInTechnician');
+    if (storedUsername) {
+      setLoggedInUsername(storedUsername);
+    } else {
+      // Si no hay usuario logueado, redirigir al login
+      navigate('/login-tecnico');
+    }
+  }, [navigate]);
+
 
   useEffect(() => {
+    if (!loggedInUsername) return; // No hacer nada si no hay técnico logueado
+
     // Escucha cambios en tiempo real en la colección 'reports'
     const q = query(collection(db, "reports"));
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -28,9 +42,9 @@ const TechnicianPanel = () => {
       querySnapshot.forEach((doc) => {
         fetchedReports.push({ ...doc.data(), docId: doc.id }); // Guarda el doc.id para futuras actualizaciones
       });
-      // Filtra los reportes para el técnico logueado
+      // Filtra los reportes para el técnico logueado (asignados a él o sin asignar)
       const technicianReports = fetchedReports.filter(report => 
-        report.assignedTo === loggedInTechnician || report.assignedTo === null
+        report.assignedTo === loggedInUsername || report.assignedTo === null
       );
       setReports(technicianReports);
     }, (error) => {
@@ -40,20 +54,134 @@ const TechnicianPanel = () => {
 
     // Limpia el listener cuando el componente se desmonta
     return () => unsubscribe();
-  }, [loggedInTechnician]); // Se ejecuta una vez al montar y si cambia el técnico logueado
+  }, [loggedInUsername]); // Se ejecuta una vez al montar y si cambia el técnico logueado
 
   const filteredReports = reports.filter(report => {
     if (filterStatus === 'Todos') return true;
     return report.status === filterStatus;
   });
 
+  // Función para calcular la fecha límite
+  const calculateDeadline = (assignedDate, zone) => {
+    let daysToAdd = 0;
+    switch (zone) {
+      case 'Cancun':
+      case 'Puerto Morelos':
+        daysToAdd = 7;
+        break;
+      case 'Playa del Carmen':
+      case 'Puerto Aventuras':
+        daysToAdd = 2; // 48 horas = 2 días hábiles
+        break;
+      case 'Tulum':
+        daysToAdd = 3;
+        break;
+      case 'Otro': // Nuevo caso para la zona "Otro"
+        daysToAdd = 10; // 10 días hábiles
+        break;
+      default:
+        return null; // Para zonas no definidas
+    }
+
+    let currentDate = new Date(assignedDate);
+    let addedDays = 0;
+
+    while (addedDays < daysToAdd) {
+      currentDate.setDate(currentDate.getDate() + 1);
+      const dayOfWeek = currentDate.getDay(); // 0 = Domingo, 6 = Sábado
+      if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Si no es sábado ni domingo
+        addedDays++;
+      }
+    }
+    return currentDate.toISOString().split('T')[0]; // Formato YYYY-MM-DD
+  };
+
+  // Función para calcular el tiempo de vencido
+  const calculateOverdueTime = (deadline) => {
+    if (!deadline) return null;
+    const now = new Date();
+    const due = new Date(deadline);
+    if (now <= due) return null; // No está vencido
+
+    const diffMs = now - due; // Diferencia en milisegundos
+
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+
+    let result = '';
+    if (diffDays > 0) result += `${diffDays}d `;
+    if (diffHours > 0) result += `${diffHours}h `;
+    if (diffMinutes > 0) result += `${diffMinutes}m `;
+
+    return result.trim() || 'Menos de 1m';
+  };
+
+  // Función para determinar el color del plazo
+  const getDeadlineColor = (report) => {
+    if (!report.deadline || report.status === 'Completado' || report.status === 'No Reparado') {
+      if (report.status === 'Completado' && report.deadline && new Date(report.completedAt) > new Date(report.deadline)) {
+        return 'bg-red-100 text-red-800 border-red-200'; // Completado pero vencido
+      } else if (report.status === 'Completado' && report.deadline && new Date(report.completedAt) <= new Date(report.deadline)) {
+        return 'bg-green-100 text-green-800 border-green-200'; // Completado a tiempo
+      }
+      return 'bg-gray-100 text-gray-800 border-gray-200'; // Sin plazo o estado final
+    }
+
+    const now = new Date();
+    const deadlineDate = new Date(report.deadline);
+    const diffHours = (deadlineDate - now) / (1000 * 60 * 60);
+
+    if (diffHours <= 0) {
+      return 'bg-red-100 text-red-800 border-red-200'; // Vencido
+    } else if (diffHours <= 24) {
+      return 'bg-yellow-100 text-yellow-800 border-yellow-200'; // Próximo a vencer (24h)
+    }
+    return 'bg-blue-100 text-blue-800 border-blue-200'; // A tiempo
+  };
+
+
   const handleStatusChange = async (reportDocId, newStatus) => {
     try {
       const reportRef = doc(db, "reports", reportDocId);
-      await updateDoc(reportRef, {
-        status: newStatus
-      });
+      const updateData = { status: newStatus };
+      const currentReport = reports.find(r => r.docId === reportDocId);
+
+      // Si el estado cambia a "En Proceso" y no está asignado, asignarlo al técnico actual y registrar assignedAt
+      if (newStatus === 'En Proceso' && !currentReport.assignedTo) {
+        const assignedAt = new Date().toISOString();
+        const deadline = calculateDeadline(assignedAt, currentReport.zone);
+
+        updateData.assignedTo = loggedInUsername;
+        updateData.assignedAt = assignedAt;
+        if (deadline) {
+          updateData.deadline = deadline;
+        }
+        showInAppNotification(`¡Has tomado el reporte ${currentReport.id}! Fecha límite: ${deadline || 'N/A'}`, 'success'); // Notificación
+      }
+      // Si se marca como completado, registra la hora de completado
+      else if (newStatus === 'Completado') {
+        updateData.completedAt = new Date().toISOString();
+        // Si está vencido al completarse, pide justificación
+        if (currentReport.deadline && new Date(updateData.completedAt) > new Date(currentReport.deadline)) {
+          if (!delayJustification.trim()) {
+            alert("Este reporte está vencido. Por favor, justifica el retraso antes de marcarlo como completado.");
+            return; // Detiene la actualización si no hay justificación
+          }
+          updateData.delayJustification = delayJustification.trim();
+        } else {
+          updateData.delayJustification = null; // Limpia justificación si se completa a tiempo
+        }
+        showInAppNotification(`¡Reporte ${currentReport.id} completado!`, 'success'); // Notificación
+      } else {
+        // Si cambia de completado a otro estado, limpia completedAt y deadline
+        updateData.completedAt = null;
+        updateData.delayJustification = null; // Limpia justificación si el estado no es completado
+      }
+
+      await updateDoc(reportRef, updateData);
       console.log(`Reporte ${reportDocId} actualizado a estado: ${newStatus}`);
+      setDelayJustification(''); // Limpiar el estado de justificación
     } catch (e) {
       console.error("Error al actualizar el estado del reporte: ", e);
       alert("No se pudo actualizar el estado. ¡Firebase está de malas!");
@@ -80,15 +208,10 @@ const TechnicianPanel = () => {
     }
   };
 
-  const handleLogout = async () => {
+  const handleLogout = () => {
     if (window.confirm('¿Estás seguro de que quieres cerrar sesión? ¡La "chamba" no se arregla sola!')) {
-      try {
-        await auth.signOut(); // Cierra la sesión de Firebase
-        navigate('/');
-      } catch (error) {
-        console.error("Error al cerrar sesión: ", error);
-        alert("No se pudo cerrar la sesión. ¡Intenta de nuevo!");
-      }
+      localStorage.removeItem('loggedInTechnician'); // Limpiar el usuario logueado
+      navigate('/');
     }
   };
 
@@ -109,6 +232,7 @@ const TechnicianPanel = () => {
         workLog: [...currentWorkLog, { ...workLogData, cost: parseFloat(workLogData.cost) || 0 }]
       });
       console.log(`Registro de trabajo añadido al reporte ${reportDocId}`);
+      showInAppNotification(`Registro de trabajo añadido al reporte ${reportDocId}`, 'info'); // Notificación
       setWorkLogData({ description: '', date: '', time: '', cost: '' });
       setShowWorkLogForm(null); // Cierra el formulario
     } catch (e) {
@@ -138,7 +262,7 @@ const TechnicianPanel = () => {
             Panel del Técnico
           </h2>
           <p className="text-gray-600 text-lg">
-            Aquí está toda la "chamba" que tienes que hacer. ¡A darle!
+            ¡Bienvenido, <span className="text-blue-600 font-bold">{loggedInUsername}</span>! Aquí está toda la "chamba" que tienes que hacer. ¡A darle!
           </p>
         </div>
         <motion.button
@@ -181,7 +305,7 @@ const TechnicianPanel = () => {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ duration: 0.4 }}
-                className="bg-gray-50 border border-gray-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-all duration-300"
+                className={`bg-gray-50 border border-gray-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-all duration-300 ${getDeadlineColor(report)}`}
               >
                 <div className="flex justify-between items-start mb-4">
                   <div>
@@ -205,6 +329,16 @@ const TechnicianPanel = () => {
                   <p className="flex items-center"><User className="w-4 h-4 mr-2 text-purple-500" /> <strong>Reporta:</strong> {report.reporterName}</p>
                   <p className="flex items-center"><Phone className="w-4 h-4 mr-2 text-green-500" /> <strong>Teléfono:</strong> {report.phoneNumber}</p>
                   <p className="flex items-center"><Coffee className="w-4 h-4 mr-2 text-amber-500" /> <strong>Equipo:</strong> {report.equipmentType} ({report.equipmentModel})</p>
+                  <p className="flex items-center"><Wrench className="w-4 h-4 mr-2 text-cyan-500" /> <strong>Asignado a:</strong> {report.assignedTo || 'Sin asignar'}</p>
+                  {report.deadline && (
+                    <p className="flex items-center"><Calendar className="w-4 h-4 mr-2 text-red-500" /> <strong>Fecha Límite:</strong> {report.deadline}</p>
+                  )}
+                  {report.deadline && new Date() > new Date(report.deadline) && report.status !== 'Completado' && report.status !== 'No Reparado' && (
+                    <p className="flex items-center text-red-600 font-bold"><AlertTriangle className="w-4 h-4 mr-2" /> ¡Vencido por: {calculateOverdueTime(report.deadline)}!</p>
+                  )}
+                  {report.status === 'Completado' && report.deadline && new Date(report.completedAt) > new Date(report.deadline) && (
+                    <p className="flex items-center text-red-600 font-bold"><AlertTriangle className="w-4 h-4 mr-2" /> Completado con retraso: {calculateOverdueTime(report.deadline)}</p>
+                  )}
                 </div>
 
                 <div className="mb-4">
@@ -212,10 +346,17 @@ const TechnicianPanel = () => {
                   <p className="text-gray-700 bg-white p-4 rounded-lg border border-gray-200">{report.issueDescription}</p>
                 </div>
 
+                {report.delayJustification && (
+                  <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-red-800 font-semibold mb-2 flex items-center"><Info className="w-4 h-4 mr-2" /> Justificación del Retraso:</p>
+                    <p className="text-red-700">{report.delayJustification}</p>
+                  </div>
+                )}
+
                 {/* Historial de Trabajo */}
                 {report.workLog && report.workLog.length > 0 && (
                   <div className="mt-4 pt-4 border-t border-gray-200">
-                    <h4 className="text-md font-bold text-gray-800 mb-2 flex items-center"><FileText className="w-4 h-4 mr-2" /> Historial de Trabajo:</h4>
+                        <h4 className="text-md font-bold text-gray-800 mb-2 flex items-center"><FileText className="w-4 h-4 mr-2" /> Historial de Trabajo:</h4>
                     {report.workLog.map((log, index) => (
                       <div key={index} className="bg-white p-3 rounded-lg shadow-sm mb-2 text-sm border border-gray-100">
                         <p className="text-gray-700"><strong>Fecha:</strong> {log.date} {log.time}</p>
@@ -345,6 +486,30 @@ const TechnicianPanel = () => {
                           />
                         </div>
                       </div>
+                      {report.deadline && new Date() > new Date(report.deadline) && report.status !== 'Completado' && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.3 }}
+                          className="p-4 bg-red-50 border border-red-200 rounded-lg"
+                        >
+                          <label htmlFor={`delayJustification-${report.docId}`} className="block text-sm font-medium text-red-800">
+                            <AlertTriangle className="inline-block w-4 h-4 mr-2" />
+                            Justificación del Retraso:
+                          </label>
+                          <textarea
+                            id={`delayJustification-${report.docId}`}
+                            name="delayJustification"
+                            value={delayJustification}
+                            onChange={(e) => setDelayJustification(e.target.value)}
+                            rows="3"
+                            className="mt-1 block w-full px-3 py-2 border border-red-300 rounded-md shadow-sm focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm text-red-900"
+                            placeholder="Explica por qué el reporte se completó después del plazo."
+                            required
+                          ></textarea>
+                        </motion.div>
+                      )}
                       <div className="flex justify-end space-x-2">
                         <motion.button
                           type="button"

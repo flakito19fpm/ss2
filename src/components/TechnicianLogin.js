@@ -4,7 +4,7 @@ import { LogIn, User, Lock, Coffee, Zap } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const TechnicianLogin = () => {
-  const [username, setUsername] = useState(''); // Cambiado de email a username
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const navigate = useNavigate();
@@ -13,7 +13,8 @@ const TechnicianLogin = () => {
   const predefinedUsers = {
     'admin': { password: 'Claudio1976+', role: 'Administrador' },
     'carlos': { password: 'robusta25', role: 'Técnico' },
-    'jonathan': { password: 'arabica25', role: 'Técnico' }
+    'jonathan': { password: 'arabica25', role: 'Técnico' },
+    'gabriel': { password: 'daramy25', role: 'Técnico' },
   };
 
   const handleLogin = (e) => {
@@ -29,8 +30,10 @@ const TechnicianLogin = () => {
 
     // Si las credenciales son correctas, redirigir según el rol predefinido
     if (userEntry.role === 'Administrador') {
+      localStorage.setItem('loggedInTechnician', username); // Guardar el usuario logueado
       navigate('/panel-admin');
     } else if (userEntry.role === 'Técnico') {
+      localStorage.setItem('loggedInTechnician', username); // Guardar el usuario logueado
       navigate('/panel-tecnico');
     } else {
       setError('Rol de usuario no reconocido. Contacta al administrador.');
@@ -90,7 +93,7 @@ const TechnicianLogin = () => {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className={inputClasses}
-              placeholder="Credencial"
+              placeholder="" // Eliminado el placeholder
               required
             />
           </div>
@@ -107,7 +110,7 @@ const TechnicianLogin = () => {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className={inputClasses}
-              placeholder="Contraseña"
+              placeholder="" // Eliminado el placeholder
               required
             />
           </div>
