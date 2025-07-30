@@ -107,7 +107,7 @@ const TechnicianLogin = () => {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className={inputClasses}
-              placeholder="admin@kaawa.com o carlos@kaawa.com" // Placeholder con ejemplos
+              placeholder="usuario" // Placeholder con ejemplos
               required
             />
           </div>
@@ -124,7 +124,7 @@ const TechnicianLogin = () => {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className={inputClasses}
-              placeholder="Claudio1976+ o robusta25" // Placeholder con ejemplos
+              placeholder="pass" // Placeholder con ejemplos
               required
             />
           </div>
